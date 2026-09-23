@@ -34,18 +34,36 @@ const bucket = (overrides: Partial<UsageBucket> = {}): UsageBucket => ({
 });
 
 describe('usage page logic', () => {
-  test('builds hourly and daily ranges from a stable clock with range_mode exact', () => {
-    const now = new Date('2026-09-18T12:00:00Z');
+  test('builds hourly and daily rolling ranges from a stable clock with local-offset output', () => {
+    process.env.TZ = 'Asia/Shanghai';
+    const now = new Date('2026-09-18T12:00:00Z'); // 2026-09-18T20:00:00+08:00
     const hourly = buildUsageRange('24h', now);
     const daily = buildUsageRange('7d', now);
 
     expect(hourly.step).toBe('hour');
-    expect(hourly.from).toBe('2026-09-17T12:00:00.000Z');
-    expect(hourly.to).toBe('2026-09-18T12:00:00.000Z');
+    expect(hourly.from).toBe('2026-09-17T20:00:00.000+08:00');
+    expect(hourly.to).toBe('2026-09-18T20:00:00.000+08:00');
     expect(hourly.range_mode).toBe('exact');
     expect(daily.step).toBe('day');
-    expect(daily.from).toBe('2026-09-11T12:00:00.000Z');
+    expect(daily.from).toBe('2026-09-11T20:00:00.000+08:00');
+    expect(daily.to).toBe('2026-09-18T20:00:00.000+08:00');
     expect(daily.range_mode).toBe('exact');
+  });
+
+  test('rolling windows use millisecond difference, not calendar setHours/setDate (DST-safe)', () => {
+    process.env.TZ = 'Asia/Shanghai';
+    const now = new Date('2026-09-18T12:00:00Z');
+    const h24 = buildUsageRange('24h', now);
+    const d7 = buildUsageRange('7d', now);
+    const d14 = buildUsageRange('14d', now);
+    const d30 = buildUsageRange('30d', now);
+
+    expect(new Date(now.getTime()).getTime() - new Date(h24.from).getTime()).toBe(24 * 60 * 60 * 1000);
+    expect(new Date(now.getTime()).getTime() - new Date(d7.from).getTime()).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(new Date(now.getTime()).getTime() - new Date(d14.from).getTime()).toBe(14 * 24 * 60 * 60 * 1000);
+    expect(new Date(now.getTime()).getTime() - new Date(d30.from).getTime()).toBe(30 * 24 * 60 * 60 * 1000);
+    expect(d14.step).toBe('day');
+    expect(d30.step).toBe('day');
   });
 
   test('summarizes canonical token buckets with 11 KPIs and corrected input 200', () => {

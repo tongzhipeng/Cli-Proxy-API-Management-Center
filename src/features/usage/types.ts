@@ -1,5 +1,20 @@
-export type UsageRange = '24h' | '7d';
+export type UsageRange =
+  | 'today'
+  | 'yesterday'
+  | '24h'
+  | '7d'
+  | '14d'
+  | '30d'
+  | 'this_month'
+  | 'last_month'
+  | 'custom';
 export type UsageMetric = 'tokens' | 'requests';
+
+/** Draft values for the custom-range date inputs (YYYY-MM-DD), independent of the applied query. */
+export interface UsageRangeDraft {
+  from: string;
+  to: string;
+}
 
 export interface TokenBreakdown {
   input?: {

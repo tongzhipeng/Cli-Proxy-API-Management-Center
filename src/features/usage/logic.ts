@@ -4,19 +4,204 @@ import type {
   BreakdownRow,
   UsageBucket,
   UsageRange,
+  UsageRangeDraft,
   UsageRangeQuery,
   UsageRecord,
   UsageSummary,
 } from './types';
+import { USAGE_HOUR_STEP_MAX_DAYS, USAGE_MAX_RANGE_DAYS, USAGE_RETENTION_DAYS } from './constants';
 
-export function buildUsageRange(range: UsageRange, now = new Date()): UsageRangeQuery {
-  const to = new Date(now.getTime());
-  if (range === '24h') {
-    const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    return { from: from.toISOString(), to: to.toISOString(), step: 'hour', range_mode: 'exact' };
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Formats a Date as an RFC3339 timestamp using the JS runtime's local UTC
+ * offset (e.g. `2026-09-21T00:00:00.000+08:00`), never `Z`. Backend contract
+ * requires the local offset to be preserved so day/hour bucketing can use
+ * the caller's timezone (see internal/usagestats/timeseries.go).
+ */
+export function formatLocalOffsetISO(date: Date): string {
+  const pad = (value: number, len = 2) => String(Math.abs(value)).padStart(len, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  const ms = pad(date.getMilliseconds(), 3);
+
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const offsetHours = pad(Math.floor(Math.abs(offsetMinutes) / 60));
+  const offsetMins = pad(Math.abs(offsetMinutes) % 60);
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}${sign}${offsetHours}:${offsetMins}`;
+}
+
+export function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+export function endOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+
+export function startOfLocalMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+}
+
+export function endOfLocalMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+
+/** Parses a `YYYY-MM-DD` date-input value into a local-midnight Date. */
+export function parseLocalDateInput(value: string): Date {
+  const [y, m, d] = value.split('-').map((part) => parseInt(part, 10));
+  return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
+}
+
+/** Formats a Date (or an ISO string) back into a `YYYY-MM-DD` date-input value using local components. */
+export function toLocalDateInput(value: string | Date): string {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** Inclusive day-count span between two local-midnight-normalized dates. */
+function inclusiveDaySpan(from: Date, to: Date): number {
+  const a = startOfLocalDay(from).getTime();
+  const b = startOfLocalDay(to).getTime();
+  return Math.round((b - a) / MS_PER_DAY) + 1;
+}
+
+export interface RangeValidationError {
+  key: 'usage.range_invalid_order' | 'usage.range_too_long' | 'usage.range_before_retention';
+  params?: Record<string, number>;
+}
+
+/** Validates a custom range's from/to date-input strings (format/empty checks are the UI's job). */
+export function validateCustomRange(
+  from: string,
+  to: string,
+  now = new Date()
+): RangeValidationError | null {
+  const fromDate = parseLocalDateInput(from);
+  const toDate = parseLocalDateInput(to);
+
+  if (fromDate.getTime() > toDate.getTime()) {
+    return { key: 'usage.range_invalid_order' };
   }
-  const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  return { from: from.toISOString(), to: to.toISOString(), step: 'day', range_mode: 'exact' };
+
+  const spanDays = inclusiveDaySpan(fromDate, toDate);
+  if (spanDays > USAGE_MAX_RANGE_DAYS) {
+    return { key: 'usage.range_too_long', params: { days: USAGE_MAX_RANGE_DAYS } };
+  }
+
+  const earliestRetained = startOfLocalDay(
+    new Date(now.getTime() - (USAGE_RETENTION_DAYS - 1) * MS_PER_DAY)
+  );
+  if (fromDate.getTime() < earliestRetained.getTime()) {
+    return { key: 'usage.range_before_retention', params: { days: USAGE_RETENTION_DAYS } };
+  }
+
+  return null;
+}
+
+export function buildUsageRange(
+  range: UsageRange,
+  now = new Date(),
+  draft?: UsageRangeDraft
+): UsageRangeQuery {
+  switch (range) {
+    case '24h':
+      return {
+        from: formatLocalOffsetISO(new Date(now.getTime() - 24 * 60 * 60 * 1000)),
+        to: formatLocalOffsetISO(now),
+        step: 'hour',
+        range_mode: 'exact',
+      };
+    case '7d':
+      return {
+        from: formatLocalOffsetISO(new Date(now.getTime() - 7 * MS_PER_DAY)),
+        to: formatLocalOffsetISO(now),
+        step: 'day',
+        range_mode: 'exact',
+      };
+    case '14d':
+      return {
+        from: formatLocalOffsetISO(new Date(now.getTime() - 14 * MS_PER_DAY)),
+        to: formatLocalOffsetISO(now),
+        step: 'day',
+        range_mode: 'exact',
+      };
+    case '30d':
+      return {
+        from: formatLocalOffsetISO(new Date(now.getTime() - 30 * MS_PER_DAY)),
+        to: formatLocalOffsetISO(now),
+        step: 'day',
+        range_mode: 'exact',
+      };
+    case 'today':
+      return {
+        from: formatLocalOffsetISO(startOfLocalDay(now)),
+        to: formatLocalOffsetISO(now),
+        step: 'hour',
+        range_mode: 'exact',
+      };
+    case 'yesterday': {
+      const yesterday = new Date(now.getTime() - MS_PER_DAY);
+      return {
+        from: formatLocalOffsetISO(startOfLocalDay(yesterday)),
+        to: formatLocalOffsetISO(endOfLocalDay(yesterday)),
+        step: 'hour',
+        range_mode: 'exact',
+      };
+    }
+    case 'this_month':
+      return {
+        from: formatLocalOffsetISO(startOfLocalMonth(now)),
+        to: formatLocalOffsetISO(now),
+        step: 'day',
+        range_mode: 'exact',
+      };
+    case 'last_month': {
+      const prevMonthAnchor = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return {
+        from: formatLocalOffsetISO(startOfLocalMonth(prevMonthAnchor)),
+        to: formatLocalOffsetISO(endOfLocalMonth(prevMonthAnchor)),
+        step: 'day',
+        range_mode: 'exact',
+      };
+    }
+    case 'custom': {
+      if (!draft) {
+        // No draft yet: fall back to a safe default (today) rather than throwing.
+        return {
+          from: formatLocalOffsetISO(startOfLocalDay(now)),
+          to: formatLocalOffsetISO(now),
+          step: 'hour',
+          range_mode: 'exact',
+        };
+      }
+      const fromDate = startOfLocalDay(parseLocalDateInput(draft.from));
+      const rawTo = endOfLocalDay(parseLocalDateInput(draft.to));
+      const to = rawTo.getTime() > now.getTime() ? now : rawTo;
+      const spanDays = inclusiveDaySpan(fromDate, rawTo);
+      const step = spanDays <= USAGE_HOUR_STEP_MAX_DAYS ? 'hour' : 'day';
+      return {
+        from: formatLocalOffsetISO(fromDate),
+        to: formatLocalOffsetISO(to),
+        step,
+        range_mode: 'exact',
+      };
+    }
+    default:
+      return {
+        from: formatLocalOffsetISO(new Date(now.getTime() - 24 * 60 * 60 * 1000)),
+        to: formatLocalOffsetISO(now),
+        step: 'hour',
+        range_mode: 'exact',
+      };
+  }
 }
 
 export function summarizeBuckets(buckets: UsageBucket[]): UsageSummary {
