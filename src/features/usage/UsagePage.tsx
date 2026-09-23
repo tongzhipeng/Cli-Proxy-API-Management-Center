@@ -7,7 +7,6 @@ import { useHeaderRefresh } from '@/hooks/useHeaderRefresh';
 import { useAuthStore } from '@/stores';
 import { usageStatsApi } from '@/services/api';
 import { downloadBlob } from '@/utils/download';
-import { USAGE_RANGES } from './constants';
 import {
   buildUsageRange,
   cleanAccountName,
@@ -15,8 +14,11 @@ import {
   formatTokenCount,
   generateUsageCsv,
   summarizeBuckets,
+  toLocalDateInput,
+  validateCustomRange,
 } from './logic';
 import { UsageDistributionCard } from './UsageDistributionCard';
+import { UsageRangePicker } from './UsageRangePicker';
 import { UsageRecordsTable } from './UsageRecordsTable';
 import { UsageTrendChart } from './UsageTrendChart';
 import type {
@@ -25,6 +27,7 @@ import type {
   UsageFilter,
   UsageMetric,
   UsageRange,
+  UsageRangeDraft,
   UsageRangeQuery,
   UsageRecord,
 } from './types';
@@ -46,6 +49,14 @@ export function UsagePage() {
   const [range, setRange] = useState<UsageRange>('24h');
   const [metric, setMetric] = useState<UsageMetric>('tokens');
   const [query, setQuery] = useState<UsageRangeQuery>(() => buildUsageRange('24h'));
+  // Last applied custom range (only meaningful while range === 'custom'); needed so
+  // background refreshes (useHeaderRefresh, mount effect) can rebuild the same query.
+  const [committedCustom, setCommittedCustom] = useState<UsageRangeDraft | undefined>(undefined);
+  // Draft date-input values for the custom-range picker panel; independent of the
+  // applied query until "Apply" is pressed, but synced back whenever query changes.
+  const [draftFrom, setDraftFrom] = useState('');
+  const [draftTo, setDraftTo] = useState('');
+  const [customError, setCustomError] = useState('');
 
   // Aggregated data
   const [buckets, setBuckets] = useState<UsageBucket[]>([]);
@@ -243,7 +254,7 @@ export function UsagePage() {
 
     const id = ++requestId.current;
     const recId = ++recordsRequestId.current;
-    const nextQuery = buildUsageRange(range);
+    const nextQuery = buildUsageRange(range, new Date(), range === 'custom' ? committedCustom : undefined);
     setQuery(nextQuery);
     setLoading(true);
     setError('');
@@ -259,7 +270,7 @@ export function UsagePage() {
         setLoading(false);
       }
     }
-  }, [connected, fetchInitialRecords, filter, range, refreshAggregated]);
+  }, [committedCustom, connected, fetchInitialRecords, filter, range, refreshAggregated]);
 
   useHeaderRefresh(refresh, connected);
 
@@ -270,6 +281,15 @@ export function UsagePage() {
       recordsRequestId.current += 1;
     };
   }, [refresh]);
+
+  // Draft write-back: whenever the canonical query changes (preset pick, mount,
+  // background refresh), sync the custom-range date inputs so opening the picker
+  // starts from the range that's actually active.
+  useEffect(() => {
+    setDraftFrom(toLocalDateInput(query.from));
+    setDraftTo(toLocalDateInput(query.to));
+    setCustomError('');
+  }, [query]);
 
   // Global filter change affecting charts, KPIs, breakdowns, and records
   const handleGlobalFilterChange = useCallback(
@@ -288,16 +308,52 @@ export function UsagePage() {
     [fetchInitialRecords, filter, query, refreshAggregated]
   );
 
-  // Range change (24h / 7d)
+  // Preset range change; applies immediately (picker panel closes itself).
   const handleRangeChange = (nextRange: UsageRange) => {
     setRange(nextRange);
-    const nextQuery = buildUsageRange(nextRange);
+    setCommittedCustom(undefined);
+    const nextQuery = buildUsageRange(nextRange, new Date());
     setQuery(nextQuery);
     const id = ++requestId.current;
     const recId = ++recordsRequestId.current;
     void refreshAggregated(nextQuery, filter, id);
     void fetchInitialRecords(nextQuery, filter, recId);
   };
+
+  // Custom range "Apply"; validates the draft dates and only refetches if the
+  // resulting query actually differs from what's currently applied.
+  const handleApplyCustom = () => {
+    const validationError = validateCustomRange(draftFrom, draftTo);
+    if (validationError) {
+      setCustomError(t(validationError.key, validationError.params));
+      return;
+    }
+    setCustomError('');
+
+    const draft: UsageRangeDraft = { from: draftFrom, to: draftTo };
+    const nextQuery = buildUsageRange('custom', new Date(), draft);
+    if (
+      range === 'custom' &&
+      nextQuery.from === query.from &&
+      nextQuery.to === query.to &&
+      nextQuery.step === query.step
+    ) {
+      return;
+    }
+
+    setRange('custom');
+    setCommittedCustom(draft);
+    setQuery(nextQuery);
+    const id = ++requestId.current;
+    const recId = ++recordsRequestId.current;
+    void refreshAggregated(nextQuery, filter, id);
+    void fetchInitialRecords(nextQuery, filter, recId);
+  };
+
+  const rangeTriggerLabel =
+    range === 'custom'
+      ? `${toLocalDateInput(query.from)} → ${toLocalDateInput(query.to)}`
+      : t(`usage.range_${range}`);
 
   const summary = useMemo(() => summarizeBuckets(buckets), [buckets]);
 
@@ -450,8 +506,6 @@ export function UsagePage() {
     exportCancelledRef.current = true;
   };
 
-  const rangeLabel = (value: UsageRange) => t(`usage.range_${value}`);
-
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -473,19 +527,17 @@ export function UsagePage() {
 
       {/* Top Toolbar with Range, Metric, Model Filter, Account Filter, and Reset */}
       <div className={styles.toolbar} role="group" aria-label={t('usage.range_label')}>
-        <div className={styles.segmented}>
-          {USAGE_RANGES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={value === range ? styles.segmentActive : styles.segment}
-              onClick={() => handleRangeChange(value)}
-              aria-pressed={value === range}
-            >
-              {rangeLabel(value)}
-            </button>
-          ))}
-        </div>
+        <UsageRangePicker
+          value={range}
+          triggerLabel={rangeTriggerLabel}
+          draftFrom={draftFrom}
+          draftTo={draftTo}
+          customError={customError}
+          onSelectPreset={handleRangeChange}
+          onDraftFromChange={setDraftFrom}
+          onDraftToChange={setDraftTo}
+          onApplyCustom={handleApplyCustom}
+        />
 
         <label className={styles.metricControl}>
           <span>{t('usage.metric_label')}</span>

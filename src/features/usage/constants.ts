@@ -2,8 +2,6 @@ import type { UsageRange } from './types';
 
 export const USAGE_PAGE_SIZE = 50;
 
-export const USAGE_RANGES: readonly UsageRange[] = ['24h', '7d'];
-
 /** 2-column preset grid, row-major: today/yesterday, 24h/7d, 14d/30d, this_month/last_month. */
 export const USAGE_RANGE_PRESETS: readonly UsageRange[] = [
   'today',

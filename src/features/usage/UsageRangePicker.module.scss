@@ -1,0 +1,164 @@
+@use '../../styles/mixins' as *;
+
+.wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-md;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--border-hover);
+  }
+
+  &[aria-expanded='true'] {
+    border-color: var(--viz-success);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.16);
+  }
+}
+
+.triggerIcon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.triggerText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.chevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+
+  .trigger[aria-expanded='true'] & {
+    transform: rotate(180deg);
+  }
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 2010;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: $radius-lg;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  @include mobile {
+    left: auto;
+    right: 0;
+  }
+}
+
+.presetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.preset {
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    border-color: var(--border-hover);
+  }
+}
+
+.presetActive {
+  background: var(--viz-success);
+  border-color: var(--viz-success);
+  color: #fff;
+
+  &:hover {
+    border-color: var(--viz-success);
+  }
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-color);
+}
+
+.customRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.dateField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
+
+  input {
+    border: 1px solid var(--border-color);
+    border-radius: $radius-sm;
+    padding: 6px 8px;
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    min-width: 0;
+  }
+}
+
+.arrow {
+  color: var(--text-tertiary);
+  padding-bottom: 8px;
+}
+
+.customError {
+  color: var(--error-color);
+  font-size: 11px;
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-quaternary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
