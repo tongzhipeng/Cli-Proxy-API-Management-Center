@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   buildUsageRange,
   endOfLocalMonth,
@@ -14,7 +14,21 @@ import zhCN from '@/i18n/locales/zh-CN.json';
 import zhTW from '@/i18n/locales/zh-TW.json';
 import ru from '@/i18n/locales/ru.json';
 
-process.env.TZ = 'Asia/Shanghai';
+// These tests assert local-offset (+08:00) output; bun test's default runner
+// environment is UTC regardless of the host's actual timezone, so TZ must be
+// set explicitly here. Scoped to this file only (restored in afterAll) since
+// a bare top-level mutation leaks into other test files sharing this bun
+// process (confirmed to break tests/quotaTimelineRendering.test.ts, which
+// relies on the UTC default).
+const ORIGINAL_TZ = process.env.TZ;
+beforeAll(() => {
+  process.env.TZ = 'Asia/Shanghai';
+});
+afterAll(() => {
+  // bun test's own default (no TZ set) resolves to UTC, not the OS default;
+  // deleting the key here would leave Asia/Shanghai in place for later tests.
+  process.env.TZ = ORIGINAL_TZ === undefined ? 'UTC' : ORIGINAL_TZ;
+});
 
 describe('formatLocalOffsetISO', () => {
   test('formats a local Date with a +08:00 offset, never Z', () => {
