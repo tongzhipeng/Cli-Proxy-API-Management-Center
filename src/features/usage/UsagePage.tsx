@@ -10,9 +10,11 @@ import { downloadBlob } from '@/utils/download';
 import {
   buildUsageRange,
   cleanAccountName,
+  customDateBounds,
   formatDuration,
   formatTokenCount,
   generateUsageCsv,
+  isDateInputValue,
   summarizeBuckets,
   toLocalDateInput,
   validateCustomRange,
@@ -56,7 +58,6 @@ export function UsagePage() {
   // applied query until "Apply" is pressed, but synced back whenever query changes.
   const [draftFrom, setDraftFrom] = useState('');
   const [draftTo, setDraftTo] = useState('');
-  const [customError, setCustomError] = useState('');
 
   // Aggregated data
   const [buckets, setBuckets] = useState<UsageBucket[]>([]);
@@ -288,8 +289,19 @@ export function UsagePage() {
   useEffect(() => {
     setDraftFrom(toLocalDateInput(query.from));
     setDraftTo(toLocalDateInput(query.to));
-    setCustomError('');
   }, [query]);
+
+  // Live validation of the draft dates: an invalid draft shows an in-panel error
+  // and disables "Apply", so no request is ever sent for it.
+  const customValidation = useMemo(() => {
+    if (!isDateInputValue(draftFrom) || !isDateInputValue(draftTo)) {
+      return { valid: false, error: '' };
+    }
+    const validationError = validateCustomRange(draftFrom, draftTo);
+    return validationError
+      ? { valid: false, error: t(validationError.key, validationError.params) }
+      : { valid: true, error: '' };
+  }, [draftFrom, draftTo, t]);
 
   // Global filter change affecting charts, KPIs, breakdowns, and records
   const handleGlobalFilterChange = useCallback(
@@ -323,12 +335,7 @@ export function UsagePage() {
   // Custom range "Apply"; validates the draft dates and only refetches if the
   // resulting query actually differs from what's currently applied.
   const handleApplyCustom = () => {
-    const validationError = validateCustomRange(draftFrom, draftTo);
-    if (validationError) {
-      setCustomError(t(validationError.key, validationError.params));
-      return;
-    }
-    setCustomError('');
+    if (!customValidation.valid) return;
 
     const draft: UsageRangeDraft = { from: draftFrom, to: draftTo };
     const nextQuery = buildUsageRange('custom', new Date(), draft);
@@ -532,7 +539,9 @@ export function UsagePage() {
           triggerLabel={rangeTriggerLabel}
           draftFrom={draftFrom}
           draftTo={draftTo}
-          customError={customError}
+          customError={customValidation.error}
+          applyDisabled={!customValidation.valid}
+          dateBounds={customDateBounds()}
           onSelectPreset={handleRangeChange}
           onDraftFromChange={setDraftFrom}
           onDraftToChange={setDraftTo}

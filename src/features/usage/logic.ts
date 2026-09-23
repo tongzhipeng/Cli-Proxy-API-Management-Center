@@ -66,6 +66,18 @@ export function toLocalDateInput(value: string | Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/** True only for a real calendar date in `YYYY-MM-DD` form (what `<input type="date">` yields). */
+export function isDateInputValue(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  return toLocalDateInput(parseLocalDateInput(value)) === value;
+}
+
+/** `min`/`max` for the custom-range date inputs: the retention window up to today. */
+export function customDateBounds(now = new Date()): { min: string; max: string } {
+  const min = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (USAGE_RETENTION_DAYS - 1));
+  return { min: toLocalDateInput(min), max: toLocalDateInput(now) };
+}
+
 /** Inclusive day-count span between two local-midnight-normalized dates. */
 function inclusiveDaySpan(from: Date, to: Date): number {
   const a = startOfLocalDay(from).getTime();
@@ -96,10 +108,7 @@ export function validateCustomRange(
     return { key: 'usage.range_too_long', params: { days: USAGE_MAX_RANGE_DAYS } };
   }
 
-  const earliestRetained = startOfLocalDay(
-    new Date(now.getTime() - (USAGE_RETENTION_DAYS - 1) * MS_PER_DAY)
-  );
-  if (fromDate.getTime() < earliestRetained.getTime()) {
+  if (fromDate.getTime() < parseLocalDateInput(customDateBounds(now).min).getTime()) {
     return { key: 'usage.range_before_retention', params: { days: USAGE_RETENTION_DAYS } };
   }
 
@@ -148,7 +157,7 @@ export function buildUsageRange(
         range_mode: 'exact',
       };
     case 'yesterday': {
-      const yesterday = new Date(now.getTime() - MS_PER_DAY);
+      const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
       return {
         from: formatLocalOffsetISO(startOfLocalDay(yesterday)),
         to: formatLocalOffsetISO(endOfLocalDay(yesterday)),

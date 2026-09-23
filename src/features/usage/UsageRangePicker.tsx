@@ -12,6 +12,8 @@ interface UsageRangePickerProps {
   draftFrom: string;
   draftTo: string;
   customError?: string;
+  applyDisabled: boolean;
+  dateBounds: { min: string; max: string };
   onSelectPreset: (range: UsageRange) => void;
   onDraftFromChange: (value: string) => void;
   onDraftToChange: (value: string) => void;
@@ -24,6 +26,8 @@ export function UsageRangePicker({
   draftFrom,
   draftTo,
   customError,
+  applyDisabled,
+  dateBounds,
   onSelectPreset,
   onDraftFromChange,
   onDraftToChange,
@@ -61,9 +65,10 @@ export function UsageRangePicker({
   );
 
   const applyCustom = useCallback(() => {
+    if (applyDisabled) return;
     onApplyCustom();
     setOpen(false);
-  }, [onApplyCustom]);
+  }, [applyDisabled, onApplyCustom]);
 
   return (
     <div className={styles.wrap} ref={wrapRef}>
@@ -104,6 +109,8 @@ export function UsageRangePicker({
               <input
                 type="date"
                 value={draftFrom}
+                min={dateBounds.min}
+                max={dateBounds.max}
                 onChange={(event) => onDraftFromChange(event.target.value)}
               />
             </label>
@@ -115,6 +122,8 @@ export function UsageRangePicker({
               <input
                 type="date"
                 value={draftTo}
+                min={dateBounds.min}
+                max={dateBounds.max}
                 onChange={(event) => onDraftToChange(event.target.value)}
               />
             </label>
@@ -124,7 +133,7 @@ export function UsageRangePicker({
           <p className={styles.hint}>{t('usage.range_hint_step')}</p>
 
           <div className={styles.actions}>
-            <Button type="button" variant="primary" size="sm" onClick={applyCustom}>
+            <Button type="button" variant="primary" size="sm" onClick={applyCustom} disabled={applyDisabled}>
               {t('usage.custom_apply')}
             </Button>
           </div>

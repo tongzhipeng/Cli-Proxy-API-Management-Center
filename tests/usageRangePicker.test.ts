@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   buildUsageRange,
+  customDateBounds,
   endOfLocalMonth,
   formatLocalOffsetISO,
+  isDateInputValue,
   parseLocalDateInput,
   startOfLocalMonth,
   toLocalDateInput,
@@ -119,6 +121,38 @@ describe('validateCustomRange', () => {
 
   test('accepts a valid in-window range', () => {
     expect(validateCustomRange('2026-09-18', '2026-09-20', now)).toBeNull();
+  });
+});
+
+describe('custom range input guards', () => {
+  test('isDateInputValue accepts only real YYYY-MM-DD dates', () => {
+    expect(isDateInputValue('2026-09-22')).toBe(true);
+    expect(isDateInputValue('')).toBe(false);
+    expect(isDateInputValue('2026-09-2')).toBe(false);
+    expect(isDateInputValue('2026-02-30')).toBe(false);
+  });
+
+  test('customDateBounds spans the retention window up to today', () => {
+    const now = new Date(2026, 8, 22, 10, 0, 0, 0);
+    expect(customDateBounds(now)).toEqual({ min: '2026-06-25', max: '2026-09-22' });
+    expect(validateCustomRange('2026-06-25', '2026-06-25', now)).toBeNull();
+    expect(validateCustomRange('2026-06-24', '2026-06-25', now)?.key).toBe('usage.range_before_retention');
+  });
+});
+
+describe('yesterday across a DST change', () => {
+  test('uses the previous calendar day, not now minus 24h', () => {
+    const previous = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      // DST starts 2026-03-08 02:00 local; now − 24h would land on 03-07.
+      const now = new Date(2026, 2, 9, 0, 30, 0, 0);
+      const r = buildUsageRange('yesterday', now);
+      expect(r.from).toBe('2026-03-08T00:00:00.000-05:00');
+      expect(r.to).toBe('2026-03-08T23:59:59.999-04:00');
+    } finally {
+      process.env.TZ = previous;
+    }
   });
 });
 
