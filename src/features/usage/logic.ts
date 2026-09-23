@@ -11,12 +11,11 @@ import type {
 
 export function buildUsageRange(range: UsageRange, now = new Date()): UsageRangeQuery {
   const to = new Date(now.getTime());
-  const from = new Date(now.getTime());
   if (range === '24h') {
-    from.setHours(from.getHours() - 24);
+    const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     return { from: from.toISOString(), to: to.toISOString(), step: 'hour', range_mode: 'exact' };
   }
-  from.setDate(from.getDate() - 7);
+  const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   return { from: from.toISOString(), to: to.toISOString(), step: 'day', range_mode: 'exact' };
 }
 
