@@ -143,6 +143,12 @@ export function SectionNetwork({
                     value: 'fill-first',
                     label: t('config_management.visual.sections.network.strategy_fill_first'),
                   },
+                  {
+                    value: 'quota-reset-first',
+                    label: t(
+                      'config_management.visual.sections.network.strategy_quota_reset_first'
+                    ),
+                  },
                 ]}
                 id={`${routingStrategyLabelId}-select`}
                 disabled={disabled}
