@@ -66,15 +66,16 @@ export const TYPE_COLORS: Record<string, TypeColorSet> = {
 
 // Antigravity API configuration
 export const ANTIGRAVITY_QUOTA_URLS = [
-  'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
   'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+  'https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
   'https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:retrieveUserQuotaSummary',
 ];
 
 export const ANTIGRAVITY_CODE_ASSIST_URL =
   'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist';
 
-export const ANTIGRAVITY_CLI_VERSION = '1.0.13';
+// Older client versions omit Gemini quota on daily; keep this aligned with the client.
+export const ANTIGRAVITY_CLI_VERSION = '2.24.0';
 export const ANTIGRAVITY_CLIENT_NAME = 'aidev_client';
 export const ANTIGRAVITY_CLIENT_PLATFORM = {
   osType: 'darwin',
